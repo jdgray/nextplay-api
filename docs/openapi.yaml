@@ -1,0 +1,1191 @@
+openapi: 3.0.0
+info:
+  title: NextPlay API
+  version: 0.1.0
+  description: Serverless soccer team analytics API (organizations, teams,
+    players, games, and per-game event data).
+servers:
+  - url: /
+components:
+  securitySchemes:
+    cognitoJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token issued by the Cognito user pool (see /auth/login)
+  schemas:
+    Signup:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 256
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+        - email
+        - password
+        - fullName
+    ConfirmSignup:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          minLength: 1
+          maxLength: 20
+      required:
+        - email
+        - code
+    Login:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+      required:
+        - email
+        - password
+    Refresh:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          minLength: 1
+      required:
+        - refreshToken
+    Logout:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          minLength: 1
+      required:
+        - accessToken
+    CreateOrganization:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+        - name
+    UpdateOrganization:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+    CreateTeam:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        season:
+          type: string
+          minLength: 1
+          maxLength: 50
+      required:
+        - name
+    UpdateTeam:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        season:
+          type: string
+          minLength: 1
+          maxLength: 50
+    UpdateUser:
+      type: object
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+    RoleName:
+      type: string
+      enum:
+        - ORG_ADMIN
+        - COACH
+        - ASSISTANT_COACH
+        - TEAM_MANAGER
+        - VIEWER
+    AssignRole:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/RoleName"
+        organizationId:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+      required:
+        - role
+    CreatePlayer:
+      type: object
+      properties:
+        externalPlayerId:
+          type: string
+          minLength: 1
+          maxLength: 100
+        rosterLabel:
+          type: string
+          minLength: 1
+          maxLength: 200
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        jerseyNumber:
+          type: integer
+          minimum: 0
+      required:
+        - externalPlayerId
+        - rosterLabel
+        - fullName
+    UpdatePlayer:
+      type: object
+      properties:
+        externalPlayerId:
+          type: string
+          minLength: 1
+          maxLength: 100
+        rosterLabel:
+          type: string
+          minLength: 1
+          maxLength: 200
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        jerseyNumber:
+          type: integer
+          minimum: 0
+    CreateGame:
+      type: object
+      properties:
+        opponentName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        gameDate:
+          type: string
+          format: date
+        leagueType:
+          type: string
+          minLength: 1
+          maxLength: 100
+        externalGameId:
+          type: integer
+      required:
+        - opponentName
+    UpdateGame:
+      type: object
+      properties:
+        opponentName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        gameDate:
+          type: string
+          format: date
+        leagueType:
+          type: string
+          minLength: 1
+          maxLength: 100
+        externalGameId:
+          type: integer
+    SubInterval:
+      type: object
+      properties:
+        sequence:
+          type: integer
+          minimum: 0
+          exclusiveMinimum: true
+        timeInMinute:
+          type: integer
+          minimum: 0
+        timeOutMinute:
+          type: integer
+          minimum: 0
+      required:
+        - sequence
+        - timeInMinute
+    GoalOrAssistEvent:
+      type: object
+      properties:
+        sequence:
+          type: integer
+          minimum: 0
+          exclusiveMinimum: true
+        minute:
+          type: integer
+          minimum: 0
+        position:
+          type: string
+          maxLength: 100
+      required:
+        - sequence
+        - minute
+    PlayerGameLogEntry:
+      type: object
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        playerId:
+          type: string
+          format: uuid
+        starter:
+          type: boolean
+        totalTimeInGameMinutes:
+          type: integer
+          minimum: 0
+        onBenchMinutes:
+          type: integer
+          minimum: 0
+        notes:
+          type: string
+        subIntervals:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubInterval"
+          default: []
+        goalEvents:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalOrAssistEvent"
+          default: []
+        assistEvents:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalOrAssistEvent"
+          default: []
+      required:
+        - gameId
+        - playerId
+    BulkImportPlayerGameLogs:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerGameLogEntry"
+          minItems: 1
+      required:
+        - entries
+    AttackSource:
+      type: string
+      enum:
+        - LEFT
+        - CENTER
+        - RIGHT
+    DefensiveEventEntry:
+      type: object
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        opponentNameRaw:
+          type: string
+          minLength: 1
+          maxLength: 200
+        needsReview:
+          type: boolean
+          default: false
+        minute:
+          type: integer
+          minimum: 0
+        goalAgainst:
+          type: boolean
+        goalScorerOpponent:
+          type: string
+          maxLength: 200
+        goalkeeperId:
+          type: string
+          format: uuid
+        leftBackId:
+          type: string
+          format: uuid
+        cdmId:
+          type: string
+          format: uuid
+        rightBackId:
+          type: string
+          format: uuid
+        defensiveErrorPlayerId:
+          type: string
+          format: uuid
+        missedHelpPlayerId:
+          type: string
+          format: uuid
+        defensiveShape:
+          type: string
+          maxLength: 100
+        attackSource:
+          $ref: "#/components/schemas/AttackSource"
+        goalTypeNotes:
+          type: string
+        minutesInPositionBeforeGoal:
+          type: integer
+          minimum: 0
+      required:
+        - opponentNameRaw
+        - minute
+        - goalAgainst
+    BulkImportDefensiveEvents:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/DefensiveEventEntry"
+          minItems: 1
+      required:
+        - entries
+    CornerSide:
+      type: string
+      enum:
+        - LEFT
+        - RIGHT
+    CornerType:
+      type: string
+      enum:
+        - IN
+        - OUT
+        - SHORT
+        - PASS
+    CornerKickEventEntry:
+      type: object
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        opponentNameRaw:
+          type: string
+          minLength: 1
+          maxLength: 200
+        needsReview:
+          type: boolean
+          default: false
+        minute:
+          type: integer
+          minimum: 0
+        side:
+          $ref: "#/components/schemas/CornerSide"
+        takerId:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/CornerType"
+        targetZone:
+          type: string
+          maxLength: 100
+        outcome:
+          type: string
+          maxLength: 200
+        shot:
+          type: boolean
+          default: false
+        goal:
+          type: boolean
+          default: false
+        receiverId:
+          type: string
+          format: uuid
+        notes:
+          type: string
+      required:
+        - opponentNameRaw
+        - minute
+    BulkImportCornerKickEvents:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CornerKickEventEntry"
+          minItems: 1
+      required:
+        - entries
+  parameters: {}
+paths:
+  /auth/signup:
+    post:
+      summary: Create an account
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Signup"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /auth/confirm:
+    post:
+      summary: Confirm a signup code
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmSignup"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /auth/login:
+    post:
+      summary: Log in
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Login"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /auth/refresh:
+    post:
+      summary: Refresh an access token
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Refresh"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /auth/logout:
+    post:
+      summary: Log out (global sign-out)
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Logout"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /auth/me:
+    get:
+      summary: Get the current user and their roles
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /organizations:
+    post:
+      summary: Create an organization
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrganization"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    get:
+      summary: List organizations the caller has a role in
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /organizations/{id}:
+    get:
+      summary: Get an organization
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    patch:
+      summary: Update an organization
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganization"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    delete:
+      summary: Delete an organization
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /organizations/{orgId}/teams:
+    post:
+      summary: Create a team
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeam"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    get:
+      summary: List an organization’s teams
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /teams/{id}:
+    get:
+      summary: Get a team
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    patch:
+      summary: Update a team
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeam"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    delete:
+      summary: Delete a team
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /users/{id}:
+    get:
+      summary: Get a user
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    patch:
+      summary: Update a user
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUser"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /users/{id}/roles:
+    get:
+      summary: List a user’s roles
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    post:
+      summary: Assign a role to a user
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignRole"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /roles/{roleId}:
+    delete:
+      summary: Remove a role
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /teams/{teamId}/players:
+    post:
+      summary: Add a player to a team
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlayer"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    get:
+      summary: List a team’s players
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /players/{id}:
+    get:
+      summary: Get a player
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    patch:
+      summary: Update a player
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlayer"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    delete:
+      summary: Remove a player
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /teams/{teamId}/games:
+    post:
+      summary: Add a game to a team
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGame"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    get:
+      summary: List a team’s games
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /games/{id}:
+    get:
+      summary: Get a game
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    patch:
+      summary: Update a game
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGame"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    delete:
+      summary: Remove a game
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /games/{gameId}/player-game-logs:
+    get:
+      summary: List player game logs for a game
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /player-game-logs/{id}:
+    get:
+      summary: Get a player game log
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /player-game-logs/bulk-import:
+    post:
+      summary: Bulk-import player game logs
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkImportPlayerGameLogs"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /games/{gameId}/defensive-events:
+    get:
+      summary: List defensive events for a game
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /defensive-events/{id}:
+    get:
+      summary: Get a defensive event
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /teams/{teamId}/defensive-events/bulk-import:
+    post:
+      summary: Bulk-import defensive events
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkImportDefensiveEvents"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /games/{gameId}/corner-kick-events:
+    get:
+      summary: List corner-kick events for a game
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /corner-kick-events/{id}:
+    get:
+      summary: Get a corner-kick event
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /teams/{teamId}/corner-kick-events/bulk-import:
+    post:
+      summary: Bulk-import corner-kick events
+      security:
+        - cognitoJwt: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkImportCornerKickEvents"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /teams/{teamId}/stats/defensive-metrics:
+    get:
+      summary: Defensive metrics by attack source (mirrors the workbook’s side panel)
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /teams/{teamId}/stats/corner-kick-metrics:
+    get:
+      summary: Corner-kick conversion metrics (mirrors the workbook’s side panel)
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /players/{id}/stats/season-summary:
+    get:
+      summary: A player’s season totals (goals, assists, minutes)
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found

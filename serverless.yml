@@ -1,0 +1,525 @@
+service: nextplay-api
+
+frameworkVersion: '3'
+
+useDotenv: true
+
+plugins:
+  - serverless-esbuild
+  - serverless-offline
+  - serverless-prune-plugin
+
+provider:
+  name: aws
+  # nodejs18.x, not nodejs20.x: serverless-offline v13+ requires Serverless
+  # Framework v4 (ESM-only plugin), and v12 (the last version compatible with
+  # the Framework v3 used here) only emulates up through nodejs18.x. Bump this
+  # once the project moves to Framework v4 / serverless-offline v14.
+  runtime: nodejs18.x
+  region: ${opt:region, 'us-west-2'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 15
+  environment:
+    NODE_ENV: ${sls:stage}
+    DATABASE_URL: ${env:DATABASE_URL}
+    AWS_REGION: ${self:provider.region}
+    COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+    COGNITO_USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClient
+  httpApi:
+    cors: true
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+        audience:
+          - !Ref CognitoUserPoolClient
+  # Deployed Lambdas that touch the DB must run inside the VPC that has a
+  # route to the RDS Proxy / Aurora cluster. Fill these in (or wire via SSM)
+  # before running a real `serverless deploy`; left unset for local-only work.
+  # vpc:
+  #   securityGroupIds:
+  #     - ${param:lambdaSecurityGroupId}
+  #   subnetIds: ${param:privateSubnetIds}
+
+package:
+  individually: false
+  patterns:
+    - '!node_modules/**'
+    - 'node_modules/.prisma/client/**'
+    - 'node_modules/@prisma/client/**'
+    - 'docs/openapi.yaml'
+
+custom:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    target: node20
+    platform: node
+    exclude:
+      - '@prisma/client'
+      - '.prisma/client'
+    packagerOptions:
+      scripts:
+        - npx prisma generate
+  serverless-offline:
+    httpPort: 3000
+  prune:
+    automatic: true
+    number: 3
+
+functions:
+  # --- Auth (Cognito-backed; no protected authorizer except /auth/me) ---
+  authSignup:
+    handler: src/handlers/auth/signup.handler
+    events:
+      - httpApi:
+          path: /auth/signup
+          method: post
+  authConfirm:
+    handler: src/handlers/auth/confirm.handler
+    events:
+      - httpApi:
+          path: /auth/confirm
+          method: post
+  authLogin:
+    handler: src/handlers/auth/login.handler
+    events:
+      - httpApi:
+          path: /auth/login
+          method: post
+  authRefresh:
+    handler: src/handlers/auth/refresh.handler
+    events:
+      - httpApi:
+          path: /auth/refresh
+          method: post
+  authLogout:
+    handler: src/handlers/auth/logout.handler
+    events:
+      - httpApi:
+          path: /auth/logout
+          method: post
+  authMe:
+    handler: src/handlers/auth/me.handler
+    events:
+      - httpApi:
+          path: /auth/me
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Organizations ---
+  organizationCreate:
+    handler: src/handlers/organizations/create.handler
+    events:
+      - httpApi:
+          path: /organizations
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  organizationList:
+    handler: src/handlers/organizations/list.handler
+    events:
+      - httpApi:
+          path: /organizations
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  organizationGet:
+    handler: src/handlers/organizations/get.handler
+    events:
+      - httpApi:
+          path: /organizations/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  organizationUpdate:
+    handler: src/handlers/organizations/update.handler
+    events:
+      - httpApi:
+          path: /organizations/{id}
+          method: patch
+          authorizer:
+            name: cognitoAuthorizer
+  organizationRemove:
+    handler: src/handlers/organizations/remove.handler
+    events:
+      - httpApi:
+          path: /organizations/{id}
+          method: delete
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Teams ---
+  teamCreate:
+    handler: src/handlers/teams/create.handler
+    events:
+      - httpApi:
+          path: /organizations/{orgId}/teams
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  teamList:
+    handler: src/handlers/teams/list.handler
+    events:
+      - httpApi:
+          path: /organizations/{orgId}/teams
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  teamGet:
+    handler: src/handlers/teams/get.handler
+    events:
+      - httpApi:
+          path: /teams/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  teamUpdate:
+    handler: src/handlers/teams/update.handler
+    events:
+      - httpApi:
+          path: /teams/{id}
+          method: patch
+          authorizer:
+            name: cognitoAuthorizer
+  teamRemove:
+    handler: src/handlers/teams/remove.handler
+    events:
+      - httpApi:
+          path: /teams/{id}
+          method: delete
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Users / Roles ---
+  userGet:
+    handler: src/handlers/users/get.handler
+    events:
+      - httpApi:
+          path: /users/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  userUpdate:
+    handler: src/handlers/users/update.handler
+    events:
+      - httpApi:
+          path: /users/{id}
+          method: patch
+          authorizer:
+            name: cognitoAuthorizer
+  userListRoles:
+    handler: src/handlers/users/list-roles.handler
+    events:
+      - httpApi:
+          path: /users/{id}/roles
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  userAssignRole:
+    handler: src/handlers/users/assign-role.handler
+    events:
+      - httpApi:
+          path: /users/{id}/roles
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  userRemoveRole:
+    handler: src/handlers/users/remove-role.handler
+    events:
+      - httpApi:
+          path: /roles/{roleId}
+          method: delete
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Players ---
+  playerCreate:
+    handler: src/handlers/players/create.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/players
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  playerList:
+    handler: src/handlers/players/list.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/players
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  playerGet:
+    handler: src/handlers/players/get.handler
+    events:
+      - httpApi:
+          path: /players/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  playerUpdate:
+    handler: src/handlers/players/update.handler
+    events:
+      - httpApi:
+          path: /players/{id}
+          method: patch
+          authorizer:
+            name: cognitoAuthorizer
+  playerRemove:
+    handler: src/handlers/players/remove.handler
+    events:
+      - httpApi:
+          path: /players/{id}
+          method: delete
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Games ---
+  gameCreate:
+    handler: src/handlers/games/create.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/games
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  gameList:
+    handler: src/handlers/games/list.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/games
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  gameGet:
+    handler: src/handlers/games/get.handler
+    events:
+      - httpApi:
+          path: /games/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  gameUpdate:
+    handler: src/handlers/games/update.handler
+    events:
+      - httpApi:
+          path: /games/{id}
+          method: patch
+          authorizer:
+            name: cognitoAuthorizer
+  gameRemove:
+    handler: src/handlers/games/remove.handler
+    events:
+      - httpApi:
+          path: /games/{id}
+          method: delete
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Player Game Logs ---
+  playerGameLogList:
+    handler: src/handlers/player-game-logs/list.handler
+    events:
+      - httpApi:
+          path: /games/{gameId}/player-game-logs
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  playerGameLogGet:
+    handler: src/handlers/player-game-logs/get.handler
+    events:
+      - httpApi:
+          path: /player-game-logs/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  playerGameLogBulkImport:
+    handler: src/handlers/player-game-logs/bulk-import.handler
+    events:
+      - httpApi:
+          path: /player-game-logs/bulk-import
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Defensive Events ---
+  defensiveEventList:
+    handler: src/handlers/defensive-events/list.handler
+    events:
+      - httpApi:
+          path: /games/{gameId}/defensive-events
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  defensiveEventGet:
+    handler: src/handlers/defensive-events/get.handler
+    events:
+      - httpApi:
+          path: /defensive-events/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  defensiveEventBulkImport:
+    handler: src/handlers/defensive-events/bulk-import.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/defensive-events/bulk-import
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Corner-Kick Events ---
+  cornerKickEventList:
+    handler: src/handlers/corner-kick-events/list.handler
+    events:
+      - httpApi:
+          path: /games/{gameId}/corner-kick-events
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  cornerKickEventGet:
+    handler: src/handlers/corner-kick-events/get.handler
+    events:
+      - httpApi:
+          path: /corner-kick-events/{id}
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  cornerKickEventBulkImport:
+    handler: src/handlers/corner-kick-events/bulk-import.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/corner-kick-events/bulk-import
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Stats ---
+  statsDefensiveMetrics:
+    handler: src/handlers/stats/defensive-metrics.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/stats/defensive-metrics
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  statsCornerKickMetrics:
+    handler: src/handlers/stats/corner-kick-metrics.handler
+    events:
+      - httpApi:
+          path: /teams/{teamId}/stats/corner-kick-metrics
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  statsPlayerSeasonSummary:
+    handler: src/handlers/stats/player-season-summary.handler
+    events:
+      - httpApi:
+          path: /players/{id}/stats/season-summary
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Docs (public) ---
+  docsUi:
+    handler: src/handlers/docs/ui.handler
+    events:
+      - httpApi:
+          path: /docs
+          method: get
+  docsOpenapiYaml:
+    handler: src/handlers/docs/openapi-yaml.handler
+    events:
+      - httpApi:
+          path: /docs/openapi.yaml
+          method: get
+
+resources:
+  Resources:
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: nextplay-${sls:stage}
+        UsernameAttributes:
+          - email
+        AutoVerifiedAttributes:
+          - email
+        Schema:
+          - Name: email
+            Required: true
+            Mutable: true
+          - Name: name
+            Required: true
+            Mutable: true
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireUppercase: true
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: nextplay-${sls:stage}-client
+        UserPoolId: !Ref CognitoUserPool
+        ExplicitAuthFlows:
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        GenerateSecret: false
+
+    # --- Aurora Serverless v2 (Postgres) + RDS Proxy ---
+    # Commented out until real VPC/subnet parameters are supplied — the local
+    # dev workflow uses docker-compose Postgres instead. Uncomment and fill in
+    # the Parameters block below before deploying to a real AWS account.
+    #
+    # AuroraDbSubnetGroup:
+    #   Type: AWS::RDS::DBSubnetGroup
+    #   Properties:
+    #     DBSubnetGroupDescription: nextplay-${sls:stage} Aurora subnet group
+    #     SubnetIds: ${param:privateSubnetIds}
+    #
+    # AuroraSecurityGroup:
+    #   Type: AWS::EC2::SecurityGroup
+    #   Properties:
+    #     GroupDescription: nextplay-${sls:stage} Aurora access
+    #     VpcId: ${param:vpcId}
+    #
+    # AuroraCluster:
+    #   Type: AWS::RDS::DBCluster
+    #   Properties:
+    #     Engine: aurora-postgresql
+    #     EngineMode: provisioned
+    #     EngineVersion: '16.4'
+    #     DatabaseName: nextplay
+    #     MasterUsername: nextplay
+    #     MasterUserPassword: ${param:dbMasterPassword}
+    #     DBSubnetGroupName: !Ref AuroraDbSubnetGroup
+    #     VpcSecurityGroupIds:
+    #       - !Ref AuroraSecurityGroup
+    #     ServerlessV2ScalingConfiguration:
+    #       MinCapacity: 0.5
+    #       MaxCapacity: 4
+    #
+    # AuroraInstance:
+    #   Type: AWS::RDS::DBInstance
+    #   Properties:
+    #     Engine: aurora-postgresql
+    #     DBInstanceClass: db.serverless
+    #     DBClusterIdentifier: !Ref AuroraCluster
+    #
+    # RdsProxy:
+    #   Type: AWS::RDS::DBProxy
+    #   Properties:
+    #     DBProxyName: nextplay-${sls:stage}-proxy
+    #     EngineFamily: POSTGRESQL
+    #     RoleArn: ${param:rdsProxyRoleArn}
+    #     VpcSubnetIds: ${param:privateSubnetIds}
+    #     VpcSecurityGroupIds:
+    #       - !Ref AuroraSecurityGroup
+    #     Auth:
+    #       - AuthScheme: SECRETS
+    #         SecretArn: ${param:dbSecretArn}
+    #         IAMAuth: DISABLED
+
+  Outputs:
+    CognitoUserPoolId:
+      Value: !Ref CognitoUserPool
+    CognitoUserPoolClientId:
+      Value: !Ref CognitoUserPoolClient

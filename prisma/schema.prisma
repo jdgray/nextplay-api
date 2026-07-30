@@ -1,0 +1,261 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+enum RoleName {
+  ORG_ADMIN
+  COACH
+  ASSISTANT_COACH
+  TEAM_MANAGER
+  VIEWER
+}
+
+enum AttackSource {
+  LEFT
+  CENTER
+  RIGHT
+}
+
+enum CornerSide {
+  LEFT
+  RIGHT
+}
+
+enum CornerType {
+  IN
+  OUT
+  SHORT
+  PASS
+}
+
+model Organization {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  teams     Team[]
+  userRoles UserRole[]
+
+  @@map("organization")
+}
+
+model Team {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  season         String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  players      Player[]
+  games        Game[]
+  userRoles    UserRole[]
+
+  @@unique([organizationId, name, season])
+  @@map("team")
+}
+
+model User {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cognitoSub String   @unique @map("cognito_sub")
+  email      String   @unique
+  fullName   String   @map("full_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  roles UserRole[]
+
+  @@map("user")
+}
+
+/// Scoped to EITHER an organization OR a team (never both, never neither).
+/// Prisma has no CHECK-constraint syntax, so the exclusivity rule is added by
+/// hand to the generated migration SQL — see prisma/migrations/.../migration.sql
+model UserRole {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  teamId         String?  @map("team_id") @db.Uuid
+  role           RoleName
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team         Team?         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId, teamId, role])
+  @@map("user_roles")
+}
+
+model Player {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamId           String   @map("team_id") @db.Uuid
+  externalPlayerId String   @map("external_player_id")
+  rosterLabel      String   @map("roster_label")
+  fullName         String   @map("full_name")
+  jerseyNumber     Int?     @map("jersey_number")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  playerGameLogs PlayerGameLog[]
+
+  goalkeeperFor         DefensiveEvent[] @relation("Goalkeeper")
+  leftBackFor           DefensiveEvent[] @relation("LeftBack")
+  cdmFor                DefensiveEvent[] @relation("Cdm")
+  rightBackFor          DefensiveEvent[] @relation("RightBack")
+  defensiveErrorEvents  DefensiveEvent[] @relation("DefensiveError")
+  missedHelpEvents      DefensiveEvent[] @relation("MissedHelp")
+
+  cornerKicksTaken    CornerKickEvent[] @relation("Taker")
+  cornerKicksReceived CornerKickEvent[] @relation("Receiver")
+
+  @@unique([teamId, externalPlayerId])
+  @@map("player")
+}
+
+model Game {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamId         String    @map("team_id") @db.Uuid
+  opponentName   String    @map("opponent_name")
+  gameDate       DateTime? @map("game_date") @db.Date
+  leagueType     String?   @map("league_type")
+  externalGameId Int?      @map("external_game_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  team             Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  playerGameLogs   PlayerGameLog[]
+  defensiveEvents  DefensiveEvent[]
+  cornerKickEvents CornerKickEvent[]
+
+  @@unique([teamId, externalGameId])
+  @@map("game")
+}
+
+model PlayerGameLog {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gameId                 String   @map("game_id") @db.Uuid
+  playerId               String   @map("player_id") @db.Uuid
+  starter                Boolean?
+  goalsCount             Int      @default(0) @map("goals_count")
+  assistsCount           Int      @default(0) @map("assists_count")
+  totalTimeInGameMinutes Int?     @map("total_time_in_game_minutes")
+  onBenchMinutes         Int?     @map("on_bench_minutes")
+  notes                  String?
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player       Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  subIntervals SubInterval[]
+  goalEvents   GoalEvent[]
+  assistEvents AssistEvent[]
+
+  @@unique([gameId, playerId])
+  @@map("player_game_log")
+}
+
+model SubInterval {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playerGameLogId String @map("player_game_log_id") @db.Uuid
+  sequence        Int
+  timeInMinute    Int    @map("time_in_minute")
+  timeOutMinute   Int?   @map("time_out_minute")
+
+  playerGameLog PlayerGameLog @relation(fields: [playerGameLogId], references: [id], onDelete: Cascade)
+
+  @@unique([playerGameLogId, sequence])
+  @@map("sub_interval")
+}
+
+model GoalEvent {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playerGameLogId String  @map("player_game_log_id") @db.Uuid
+  sequence        Int
+  minute          Int
+  position        String?
+
+  playerGameLog PlayerGameLog @relation(fields: [playerGameLogId], references: [id], onDelete: Cascade)
+
+  @@unique([playerGameLogId, sequence])
+  @@map("goal_event")
+}
+
+model AssistEvent {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playerGameLogId String  @map("player_game_log_id") @db.Uuid
+  sequence        Int
+  minute          Int
+  position        String?
+
+  playerGameLog PlayerGameLog @relation(fields: [playerGameLogId], references: [id], onDelete: Cascade)
+
+  @@unique([playerGameLogId, sequence])
+  @@map("assist_event")
+}
+
+model DefensiveEvent {
+  id                          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gameId                      String?       @map("game_id") @db.Uuid
+  opponentNameRaw             String        @map("opponent_name_raw")
+  needsReview                 Boolean       @default(false) @map("needs_review")
+  minute                      Int
+  goalAgainst                 Boolean       @map("goal_against")
+  goalScorerOpponent          String?       @map("goal_scorer_opponent")
+  goalkeeperId                String?       @map("goalkeeper_id") @db.Uuid
+  leftBackId                  String?       @map("left_back_id") @db.Uuid
+  cdmId                       String?       @map("cdm_id") @db.Uuid
+  rightBackId                 String?       @map("right_back_id") @db.Uuid
+  defensiveErrorPlayerId      String?       @map("defensive_error_player_id") @db.Uuid
+  missedHelpPlayerId          String?       @map("missed_help_player_id") @db.Uuid
+  defensiveShape              String?       @map("defensive_shape")
+  attackSource                AttackSource? @map("attack_source")
+  goalTypeNotes                String?       @map("goal_type_notes")
+  minutesInPositionBeforeGoal  Int?          @map("minutes_in_position_before_goal")
+  createdAt                    DateTime      @default(now()) @map("created_at")
+
+  game                 Game?   @relation(fields: [gameId], references: [id])
+  goalkeeper           Player? @relation("Goalkeeper", fields: [goalkeeperId], references: [id])
+  leftBack             Player? @relation("LeftBack", fields: [leftBackId], references: [id])
+  cdm                  Player? @relation("Cdm", fields: [cdmId], references: [id])
+  rightBack            Player? @relation("RightBack", fields: [rightBackId], references: [id])
+  defensiveErrorPlayer Player? @relation("DefensiveError", fields: [defensiveErrorPlayerId], references: [id])
+  missedHelpPlayer     Player? @relation("MissedHelp", fields: [missedHelpPlayerId], references: [id])
+
+  @@index([gameId])
+  @@map("defensive_event")
+}
+
+model CornerKickEvent {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gameId          String?     @map("game_id") @db.Uuid
+  opponentNameRaw String      @map("opponent_name_raw")
+  needsReview     Boolean     @default(false) @map("needs_review")
+  minute          Int
+  side            CornerSide?
+  takerId         String?     @map("taker_id") @db.Uuid
+  type            CornerType?
+  targetZone      String?     @map("target_zone")
+  outcome         String?
+  shot            Boolean     @default(false)
+  goal            Boolean     @default(false)
+  receiverId      String?     @map("receiver_id") @db.Uuid
+  notes           String?
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  game     Game?   @relation(fields: [gameId], references: [id])
+  taker    Player? @relation("Taker", fields: [takerId], references: [id])
+  receiver Player? @relation("Receiver", fields: [receiverId], references: [id])
+
+  @@index([gameId])
+  @@map("corner_kick_event")
+}

@@ -1,0 +1,11 @@
+- build serverless API's from these details
+- auth AWS cognito
+- DB: Postgres
+- Base tables:
+- organization
+- team
+- user
+- userRoles
+- build rest of tables (data/Master_GraniteBay15G_United_2026_2027) from tabs (Master (Overall), Defensive Events, Corner-Kick Analysis)
+- add modals and documentation
+- create micration scripts to build tables

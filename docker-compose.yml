@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nextplay-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: nextplay
+      POSTGRES_PASSWORD: nextplay
+      POSTGRES_DB: nextplay
+    volumes:
+      - nextplay-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  nextplay-postgres-data:
