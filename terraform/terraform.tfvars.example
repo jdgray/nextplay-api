@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and adjust as needed. terraform.tfvars is
+# gitignored - don't commit real values into this example file.
+
+aws_region = "us-west-2"
+stage      = "dev"
+
+# db_name         = "nextplay"
+# master_username = "nextplay"
+
+# Dev defaults (cheap, disposable). For prod, override:
+# deletion_protection = true
+# skip_final_snapshot = false
+# min_capacity         = 0.5
+# max_capacity         = 4

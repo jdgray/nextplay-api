@@ -1,10 +1,10 @@
 # NextPlay API
 
 Serverless soccer team analytics API: AWS Lambda + API Gateway (HTTP API),
-Cognito auth, Postgres (Aurora Serverless v2 in production, docker-compose
-Postgres locally), Prisma for schema/migrations, and an import script that
-loads a team's game-tracking workbook (player minutes, goals/assists,
-defensive events, corner kicks) into the database.
+Cognito auth, Postgres (Aurora Serverless v2 behind RDS Proxy in production,
+docker-compose Postgres locally), Prisma for schema/migrations, and an import
+script that loads a team's game-tracking workbook (player minutes,
+goals/assists, defensive events, corner kicks) into the database.
 
 ## Stack
 
@@ -82,11 +82,26 @@ npm run prisma:migrate:deploy  # apply pending migrations (run in CI/deploy, not
 npm run prisma:studio          # browse the local DB
 ```
 
-Deploying against the real Aurora cluster is a manual step for now — Aurora
-sits in a private VPC, so `prisma migrate deploy` needs to run from something
-with network access to it (a bastion, a one-off "migration Lambda" invoked via
-`aws lambda invoke`, or similar). This isn't wired up yet; see `serverless.yml`
-for the (commented-out) Aurora/RDS Proxy resource definitions.
+### Applying migrations against the deployed Aurora cluster
+
+Aurora sits in a private VPC, so nothing outside it (your laptop, CI) can run
+`prisma migrate deploy` directly. Rather than fight the well-known pain of
+bundling Prisma's schema-engine binary for Linux inside a Lambda (cross-
+platform native binaries, not reliably fetched via `binaryTargets` when
+`prisma generate` runs on a Mac/Windows dev machine), there's a `dbMigrate`
+Lambda (`src/handlers/admin/migrate.ts`, wired in `serverless.yml`) that
+applies `prisma/migrations/*/migration.sql` files directly via a plain `pg`
+client, tracking state in Prisma's own `_prisma_migrations` table (same
+schema/checksums `prisma migrate deploy` itself writes — see
+`src/lib/migrate.ts`). Because it writes that exact format, a later
+`prisma migrate deploy`/`status` run from somewhere with direct DB access
+(a bastion, once you have one) still correctly recognizes what's already
+applied — this isn't a permanent workaround, it stays compatible with normal
+Prisma tooling. It's not exposed via API Gateway; run it after each deploy:
+
+```bash
+npm run db:migrate:remote
+```
 
 ## Importing the spreadsheet
 
@@ -98,8 +113,11 @@ npm run import:spreadsheet -- --file path/to/other-team.xlsx --organizationId <u
 
 - `--organizationId` is required (an existing `Organization` row — create one
   via `POST /organizations` first; skipped entirely in `--dry-run`).
-- `--dry-run` parses the workbook and prints what it would do without writing
-  anything to the database.
+- `--dry-run` parses and validates the `Roster` tab only (team name, season,
+  player count) and exits before any database access — it does not preview
+  Master/Defensive/Corner-Kick counts, since those require resolving against
+  already-created `Game`/`Player` rows. For a full preview, run for real
+  against a scratch/test organization first.
 - Reads the `Roster`, `Master (Overall)`, `Defensive Events`, and
   `Corner-Kick Analysis` tabs. Everything else in the workbook (dashboards,
   pivot tables, a `Analysis(DEF) Flat View DATA` staging tab) is derived
@@ -126,6 +144,8 @@ and the raw spec at `/docs/openapi.yaml`.
 
 Not done as part of this build — `serverless.yml` defines the Cognito user
 pool/client and (commented out) the Aurora Serverless v2 + RDS Proxy
-resources, but provisioning real AWS infrastructure, filling in VPC/subnet
-parameters, and running `serverless deploy` is left as a manual step. See the
-comments in `serverless.yml` for what needs to be filled in first.
+resources (see the comment above the resource block for why that combo was
+chosen over a plain RDS instance despite the higher cost), but provisioning
+real AWS infrastructure, filling in VPC/subnet parameters, and running
+`serverless deploy` is left as a manual step. See the comments in
+`serverless.yml` for what needs to be filled in first.

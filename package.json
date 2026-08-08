@@ -17,8 +17,9 @@
     "db:seed": "ts-node prisma/seed.ts",
     "import:spreadsheet": "ts-node scripts/import-spreadsheet.ts",
     "docs:build": "ts-node scripts/build-openapi.ts",
-    "offline": "serverless offline",
-    "deploy": "serverless deploy"
+    "start": "serverless offline",
+    "deploy": "serverless deploy",
+    "db:migrate:remote": "aws lambda invoke --function-name nextplay-api-dev-dbMigrate --cli-read-timeout 120 /dev/stdout"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.0",
@@ -26,12 +27,14 @@
     "@prisma/client": "^5.22.0",
     "dotenv": "^16.6.1",
     "exceljs": "^4.4.0",
+    "pg": "^8.13.1",
     "yaml": "^2.9.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.146",
     "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
     "@typescript-eslint/parser": "^8.18.1",
     "esbuild": "^0.24.2",

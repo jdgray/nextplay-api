@@ -36,12 +36,14 @@ provider:
         audience:
           - !Ref CognitoUserPoolClient
   # Deployed Lambdas that touch the DB must run inside the VPC that has a
-  # route to the RDS Proxy / Aurora cluster. Fill these in (or wire via SSM)
-  # before running a real `serverless deploy`; left unset for local-only work.
-  # vpc:
-  #   securityGroupIds:
-  #     - ${param:lambdaSecurityGroupId}
-  #   subnetIds: ${param:privateSubnetIds}
+  # route to the RDS Proxy/Aurora cluster (see terraform/ for that VPC and
+  # the private subnets below). Pass --param:vpcId and --param:privateSubnetIds
+  # (comma-separated) from `terraform output` at deploy time; left unset for
+  # local-only work (serverless-offline doesn't run inside a VPC regardless).
+  vpc:
+    securityGroupIds:
+      - !Ref LambdaSecurityGroup
+    subnetIds: !Split [',', "${param:privateSubnetIds, ''}"]
 
 package:
   individually: false
@@ -50,6 +52,7 @@ package:
     - 'node_modules/.prisma/client/**'
     - 'node_modules/@prisma/client/**'
     - 'docs/openapi.yaml'
+    - 'prisma/migrations/**'
 
 custom:
   esbuild:
@@ -66,6 +69,14 @@ custom:
         - npx prisma generate
   serverless-offline:
     httpPort: 3000
+    # serverless-offline can't verify a real Cognito-issued JWT's RS256
+    # signature against Cognito's JWKS, so without this it silently drops the
+    # JWT authorizer config entirely and every protected route fails at
+    # startup ("only supports retrieving JWT from the headers (undefined)").
+    # This decodes and checks claims (issuer/audience/expiry) but skips
+    # signature verification — offline-only; real deploys go through actual
+    # API Gateway JWT authorizers, which do verify the signature.
+    ignoreJWTSignature: true
   prune:
     automatic: true
     number: 3
@@ -429,6 +440,16 @@ functions:
           path: /docs/openapi.yaml
           method: get
 
+  # --- DB migration runner ---
+  # No events — not reachable via API Gateway, invoke manually once deployed:
+  #   npm run db:migrate:remote
+  # Inherits provider.vpc like every other function here, so it can reach the
+  # RDS Proxy. Longer timeout than the default since applying several
+  # migrations in one invocation can take a bit.
+  dbMigrate:
+    handler: src/handlers/admin/migrate.handler
+    timeout: 60
+
 resources:
   Resources:
     CognitoUserPool:
@@ -464,59 +485,97 @@ resources:
           - ALLOW_REFRESH_TOKEN_AUTH
         GenerateSecret: false
 
-    # --- Aurora Serverless v2 (Postgres) + RDS Proxy ---
-    # Commented out until real VPC/subnet parameters are supplied — the local
-    # dev workflow uses docker-compose Postgres instead. Uncomment and fill in
-    # the Parameters block below before deploying to a real AWS account.
+    # --- RDS Proxy in front of the Terraform-managed Aurora cluster ---
+    # The Aurora cluster, its VPC/subnets, and its security group are
+    # provisioned by terraform/ (see that directory), not here — this
+    # template only owns the proxy, the proxy's security group, the Lambda
+    # security group, the proxy's IAM role, and the target-group association
+    # that points the proxy at that cluster. Standard combo for serverless
+    # Lambda workloads: Aurora scales capacity to match Lambda's bursty
+    # invocation pattern, and RDS Proxy solves the actual connection-pooling
+    # problem (each Lambda container opens its own DB connection; without a
+    # proxy, concurrent invocations can exhaust Postgres's connection limit).
+    # Auth is master username/password via Secrets Manager (`AuthScheme:
+    # SECRETS`), not IAM database auth — IAM auth tokens expire every 15
+    # minutes and Prisma's DATABASE_URL has no way to refresh one, so it would
+    # need custom token-refresh plumbing to work at all.
     #
-    # AuroraDbSubnetGroup:
-    #   Type: AWS::RDS::DBSubnetGroup
-    #   Properties:
-    #     DBSubnetGroupDescription: nextplay-${sls:stage} Aurora subnet group
-    #     SubnetIds: ${param:privateSubnetIds}
+    # A bare AWS::RDS::DBProxy resource does NOT attach to any database by
+    # itself — RdsProxyTargetGroup below is what actually wires the proxy to
+    # the cluster; forgetting it is a common gap.
     #
-    # AuroraSecurityGroup:
-    #   Type: AWS::EC2::SecurityGroup
-    #   Properties:
-    #     GroupDescription: nextplay-${sls:stage} Aurora access
-    #     VpcId: ${param:vpcId}
+    # No manual security-group authorization step needed here: Terraform's
+    # Aurora security group already allows Postgres from anywhere in the VPC,
+    # which covers the proxy since it lives in the same VPC/subnets.
     #
-    # AuroraCluster:
-    #   Type: AWS::RDS::DBCluster
-    #   Properties:
-    #     Engine: aurora-postgresql
-    #     EngineMode: provisioned
-    #     EngineVersion: '16.4'
-    #     DatabaseName: nextplay
-    #     MasterUsername: nextplay
-    #     MasterUserPassword: ${param:dbMasterPassword}
-    #     DBSubnetGroupName: !Ref AuroraDbSubnetGroup
-    #     VpcSecurityGroupIds:
-    #       - !Ref AuroraSecurityGroup
-    #     ServerlessV2ScalingConfiguration:
-    #       MinCapacity: 0.5
-    #       MaxCapacity: 4
-    #
-    # AuroraInstance:
-    #   Type: AWS::RDS::DBInstance
-    #   Properties:
-    #     Engine: aurora-postgresql
-    #     DBInstanceClass: db.serverless
-    #     DBClusterIdentifier: !Ref AuroraCluster
-    #
-    # RdsProxy:
-    #   Type: AWS::RDS::DBProxy
-    #   Properties:
-    #     DBProxyName: nextplay-${sls:stage}-proxy
-    #     EngineFamily: POSTGRESQL
-    #     RoleArn: ${param:rdsProxyRoleArn}
-    #     VpcSubnetIds: ${param:privateSubnetIds}
-    #     VpcSecurityGroupIds:
-    #       - !Ref AuroraSecurityGroup
-    #     Auth:
-    #       - AuthScheme: SECRETS
-    #         SecretArn: ${param:dbSecretArn}
-    #         IAMAuth: DISABLED
+    # Fill in vpcId, privateSubnetIds (comma-separated), dbSecretArn, and
+    # existingAuroraClusterIdentifier from `terraform output` before deploying:
+    #   serverless deploy --param="vpcId=<vpc_id>" \
+    #     --param="privateSubnetIds=<private_subnet_ids joined by comma>" \
+    #     --param="dbSecretArn=<master_user_secret_arn>" \
+    #     --param="existingAuroraClusterIdentifier=<cluster_identifier>"
+
+    RdsProxySecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: nextplay-${sls:stage} RDS Proxy access
+        VpcId: ${param:vpcId, ''}
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 5432
+            ToPort: 5432
+            SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+    LambdaSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: nextplay-${sls:stage} Lambda egress
+        VpcId: ${param:vpcId, ''}
+
+    RdsProxyRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: nextplay-${sls:stage}-rds-proxy-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: rds.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: nextplay-${sls:stage}-rds-proxy-secret-access
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: ${param:dbSecretArn, ''}
+
+    RdsProxy:
+      Type: AWS::RDS::DBProxy
+      Properties:
+        DBProxyName: nextplay-${sls:stage}-proxy
+        EngineFamily: POSTGRESQL
+        RoleArn: !GetAtt RdsProxyRole.Arn
+        VpcSubnetIds: !Split [',', "${param:privateSubnetIds, ''}"]
+        VpcSecurityGroupIds:
+          - !Ref RdsProxySecurityGroup
+        Auth:
+          - AuthScheme: SECRETS
+            SecretArn: ${param:dbSecretArn, ''}
+            IAMAuth: DISABLED
+
+    RdsProxyTargetGroup:
+      Type: AWS::RDS::DBProxyTargetGroup
+      Properties:
+        DBProxyName: !Ref RdsProxy
+        TargetGroupName: default
+        DBClusterIdentifiers:
+          - ${param:existingAuroraClusterIdentifier, ''}
+        ConnectionPoolConfigurationInfo:
+          MaxConnectionsPercent: 100
+          MaxIdleConnectionsPercent: 50
 
   Outputs:
     CognitoUserPoolId:
