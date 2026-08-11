@@ -24,8 +24,15 @@ provider:
     NODE_ENV: ${sls:stage}
     DATABASE_URL: ${env:DATABASE_URL}
     AWS_REGION: ${self:provider.region}
-    COGNITO_USER_POOL_ID: !Ref CognitoUserPool
-    COGNITO_USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClient
+    # Was `!Ref CognitoUserPool(Client)` — a reference to this stack's own
+    # (never-deployed) Cognito resources below. This project actually runs
+    # against a pre-existing, manually-created pool (see nextplay/README.md's
+    # "Backend" section), whose id/client-id already live in .env alongside
+    # DATABASE_URL above — reading them the same way fixes every /auth/*
+    # handler that calls Cognito directly (signup/login/refresh/logout),
+    # which previously 500'd with "clientId ... [object Object]" locally.
+    COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
+    COGNITO_USER_POOL_CLIENT_ID: ${env:COGNITO_USER_POOL_CLIENT_ID}
   httpApi:
     cors: true
     authorizers:
@@ -44,6 +51,32 @@ provider:
     securityGroupIds:
       - !Ref LambdaSecurityGroup
     subnetIds: !Split [',', "${param:privateSubnetIds, ''}"]
+  # Serverless Framework's default execution role has neither of these -
+  # both are needed at runtime, not just at deploy time, so missing them
+  # doesn't show up until a deployed invocation fails:
+  #  - EC2 ENI permissions: required for any Lambda to attach to a VPC at
+  #    all (see provider.vpc above); without them every function fails to
+  #    initialize once deployed, regardless of whether it touches the DB.
+  #  - Cognito IDP actions: src/lib/cognito.ts calls these directly against
+  #    the Cognito API from the auth handlers.
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - ec2:CreateNetworkInterface
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DeleteNetworkInterface
+            - ec2:AssignPrivateIpAddresses
+            - ec2:UnassignPrivateIpAddresses
+          Resource: '*'
+        - Effect: Allow
+          Action:
+            - cognito-idp:SignUp
+            - cognito-idp:ConfirmSignUp
+            - cognito-idp:InitiateAuth
+            - cognito-idp:GlobalSignOut
+          Resource: !GetAtt CognitoUserPool.Arn
 
 package:
   individually: false
@@ -162,6 +195,12 @@ functions:
           method: delete
           authorizer:
             name: cognitoAuthorizer
+  organizationListPublic:
+    handler: src/handlers/organizations/list-public.handler
+    events:
+      - httpApi:
+          path: /public/organizations
+          method: get
   # --- Teams ---
   teamCreate:
     handler: src/handlers/teams/create.handler
@@ -203,6 +242,12 @@ functions:
           method: delete
           authorizer:
             name: cognitoAuthorizer
+  teamListPublic:
+    handler: src/handlers/teams/list-public.handler
+    events:
+      - httpApi:
+          path: /public/organizations/{orgId}/teams
+          method: get
   # --- Users / Roles ---
   userGet:
     handler: src/handlers/users/get.handler
@@ -242,6 +287,31 @@ functions:
       - httpApi:
           path: /roles/{roleId}
           method: delete
+          authorizer:
+            name: cognitoAuthorizer
+  # --- Membership Requests ---
+  membershipRequestList:
+    handler: src/handlers/membership-requests/list.handler
+    events:
+      - httpApi:
+          path: /organizations/{orgId}/membership-requests
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+  membershipRequestApprove:
+    handler: src/handlers/membership-requests/approve.handler
+    events:
+      - httpApi:
+          path: /membership-requests/{id}/approve
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+  membershipRequestReject:
+    handler: src/handlers/membership-requests/reject.handler
+    events:
+      - httpApi:
+          path: /membership-requests/{id}/reject
+          method: post
           authorizer:
             name: cognitoAuthorizer
   # --- Players ---

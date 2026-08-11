@@ -14,11 +14,7 @@ export const handler = withHandler(async (event) => {
   if (!team) {
     throw new NotFoundError('Team');
   }
-  await assertHasRole(user.id, { organizationId: team.organizationId, teamId }, [
-    'ORG_ADMIN',
-    'COACH',
-    'TEAM_MANAGER',
-  ]);
+  await assertHasRole(user.id, { organizationId: team.organizationId, teamId }, ['ORG_ADMIN', 'TEAM_ADMIN']);
 
   const gameIds = [...new Set(entries.map((e) => e.gameId).filter((id): id is string => !!id))];
   if (gameIds.length > 0) {

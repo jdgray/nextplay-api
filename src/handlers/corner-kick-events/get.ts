@@ -22,7 +22,7 @@ export const handler = withHandler(async (event) => {
   await assertHasRole(
     user.id,
     { organizationId: cornerKickEvent.game.team.organizationId, teamId: cornerKickEvent.game.teamId },
-    ['ORG_ADMIN', 'COACH', 'ASSISTANT_COACH', 'TEAM_MANAGER', 'VIEWER'],
+    ['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT'],
   );
 
   const { game: _game, ...rest } = cornerKickEvent;

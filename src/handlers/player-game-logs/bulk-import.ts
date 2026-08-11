@@ -15,11 +15,7 @@ export const handler = withHandler(async (event) => {
   }
 
   for (const game of games) {
-    await assertHasRole(user.id, { organizationId: game.team.organizationId, teamId: game.teamId }, [
-      'ORG_ADMIN',
-      'COACH',
-      'TEAM_MANAGER',
-    ]);
+    await assertHasRole(user.id, { organizationId: game.team.organizationId, teamId: game.teamId }, ['ORG_ADMIN', 'TEAM_ADMIN']);
   }
 
   const scalarData = (entry: (typeof entries)[number]) => ({

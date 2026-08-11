@@ -7,8 +7,13 @@ export const handler = withHandler(async (event) => {
   const user = await requireUser(event);
   const organizationId = requireParam(event, 'orgId');
 
-  await assertHasRole(user.id, { organizationId }, ['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT']);
+  await assertHasRole(user.id, { organizationId }, ['ORG_ADMIN']);
 
-  const teams = await prisma.team.findMany({ where: { organizationId }, orderBy: { name: 'asc' } });
-  return ok(teams);
+  const requests = await prisma.membershipRequest.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: 'desc' },
+    include: { user: { select: { email: true, fullName: true } } },
+  });
+
+  return ok(requests);
 });

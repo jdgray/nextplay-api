@@ -1,10 +1,14 @@
 import { z } from './zod-openapi';
+import { roleNameSchema } from './user';
 
 export const signupSchema = z
   .object({
     email: z.string().email(),
     password: z.string().min(8).max(256),
     fullName: z.string().min(1).max(200),
+    organizationId: z.string().uuid(),
+    teamId: z.string().uuid(),
+    requestedRole: roleNameSchema,
   })
   .openapi('Signup');
 

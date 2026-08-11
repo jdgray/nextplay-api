@@ -15,11 +15,7 @@ export const handler = withHandler(async (event) => {
     throw new NotFoundError('Team');
   }
 
-  await assertHasRole(user.id, { organizationId: team.organizationId, teamId }, [
-    'ORG_ADMIN',
-    'COACH',
-    'TEAM_MANAGER',
-  ]);
+  await assertHasRole(user.id, { organizationId: team.organizationId, teamId }, ['ORG_ADMIN', 'TEAM_ADMIN']);
 
   const game = await prisma.game.create({
     data: {

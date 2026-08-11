@@ -8,13 +8,7 @@ export const handler = withHandler(async (event) => {
   const user = await requireUser(event);
   const id = requireParam(event, 'id');
 
-  await assertHasRole(user.id, { organizationId: id }, [
-    'ORG_ADMIN',
-    'COACH',
-    'ASSISTANT_COACH',
-    'TEAM_MANAGER',
-    'VIEWER',
-  ]);
+  await assertHasRole(user.id, { organizationId: id }, ['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT']);
 
   const organization = await prisma.organization.findUnique({ where: { id } });
   if (!organization) {

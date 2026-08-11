@@ -10,10 +10,14 @@ generator client {
 
 enum RoleName {
   ORG_ADMIN
-  COACH
-  ASSISTANT_COACH
-  TEAM_MANAGER
-  VIEWER
+  TEAM_ADMIN
+  PARENT
+}
+
+enum MembershipRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum AttackSource {
@@ -40,8 +44,9 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  teams     Team[]
-  userRoles UserRole[]
+  teams              Team[]
+  userRoles          UserRole[]
+  membershipRequests MembershipRequest[]
 
   @@map("organization")
 }
@@ -54,10 +59,11 @@ model Team {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  players      Player[]
-  games        Game[]
-  userRoles    UserRole[]
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  players            Player[]
+  games              Game[]
+  userRoles          UserRole[]
+  membershipRequests MembershipRequest[]
 
   @@unique([organizationId, name, season])
   @@map("team")
@@ -71,7 +77,9 @@ model User {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  roles UserRole[]
+  roles                      UserRole[]
+  membershipRequests         MembershipRequest[] @relation("Requester")
+  reviewedMembershipRequests MembershipRequest[] @relation("Reviewer")
 
   @@map("user")
 }
@@ -95,6 +103,29 @@ model UserRole {
   @@map("user_roles")
 }
 
+/// A signup-time request to join an organization/team with a given role,
+/// sitting pending until an ORG_ADMIN approves or rejects it. Approval creates
+/// the real UserRole (org-scoped for ORG_ADMIN requests, team-scoped
+/// otherwise) — this table itself never grants access on its own.
+model MembershipRequest {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String                  @map("user_id") @db.Uuid
+  organizationId   String                  @map("organization_id") @db.Uuid
+  teamId           String?                 @map("team_id") @db.Uuid
+  requestedRole    RoleName                @map("requested_role")
+  status           MembershipRequestStatus @default(PENDING)
+  reviewedByUserId String?                 @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt       DateTime?               @map("reviewed_at")
+  createdAt        DateTime                @default(now()) @map("created_at")
+
+  user         User         @relation("Requester", fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team         Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  reviewedBy   User?        @relation("Reviewer", fields: [reviewedByUserId], references: [id])
+
+  @@map("membership_request")
+}
+
 model Player {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   teamId           String   @map("team_id") @db.Uuid
@@ -108,12 +139,12 @@ model Player {
   team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
   playerGameLogs PlayerGameLog[]
 
-  goalkeeperFor         DefensiveEvent[] @relation("Goalkeeper")
-  leftBackFor           DefensiveEvent[] @relation("LeftBack")
-  cdmFor                DefensiveEvent[] @relation("Cdm")
-  rightBackFor          DefensiveEvent[] @relation("RightBack")
-  defensiveErrorEvents  DefensiveEvent[] @relation("DefensiveError")
-  missedHelpEvents      DefensiveEvent[] @relation("MissedHelp")
+  goalkeeperFor        DefensiveEvent[] @relation("Goalkeeper")
+  leftBackFor          DefensiveEvent[] @relation("LeftBack")
+  cdmFor               DefensiveEvent[] @relation("Cdm")
+  rightBackFor         DefensiveEvent[] @relation("RightBack")
+  defensiveErrorEvents DefensiveEvent[] @relation("DefensiveError")
+  missedHelpEvents     DefensiveEvent[] @relation("MissedHelp")
 
   cornerKicksTaken    CornerKickEvent[] @relation("Taker")
   cornerKicksReceived CornerKickEvent[] @relation("Receiver")
@@ -219,9 +250,9 @@ model DefensiveEvent {
   missedHelpPlayerId          String?       @map("missed_help_player_id") @db.Uuid
   defensiveShape              String?       @map("defensive_shape")
   attackSource                AttackSource? @map("attack_source")
-  goalTypeNotes                String?       @map("goal_type_notes")
-  minutesInPositionBeforeGoal  Int?          @map("minutes_in_position_before_goal")
-  createdAt                    DateTime      @default(now()) @map("created_at")
+  goalTypeNotes               String?       @map("goal_type_notes")
+  minutesInPositionBeforeGoal Int?          @map("minutes_in_position_before_goal")
+  createdAt                   DateTime      @default(now()) @map("created_at")
 
   game                 Game?   @relation(fields: [gameId], references: [id])
   goalkeeper           Player? @relation("Goalkeeper", fields: [goalkeeperId], references: [id])

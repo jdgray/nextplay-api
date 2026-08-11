@@ -7,9 +7,7 @@ export const updateUserSchema = z
   .partial()
   .openapi('UpdateUser');
 
-export const roleNameSchema = z
-  .enum(['ORG_ADMIN', 'COACH', 'ASSISTANT_COACH', 'TEAM_MANAGER', 'VIEWER'])
-  .openapi('RoleName');
+export const roleNameSchema = z.enum(['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT']).openapi('RoleName');
 
 export const assignRoleSchema = z
   .object({

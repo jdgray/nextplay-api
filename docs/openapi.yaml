@@ -14,6 +14,12 @@ components:
       bearerFormat: JWT
       description: Access token issued by the Cognito user pool (see /auth/login)
   schemas:
+    RoleName:
+      type: string
+      enum:
+        - ORG_ADMIN
+        - TEAM_ADMIN
+        - PARENT
     Signup:
       type: object
       properties:
@@ -28,10 +34,21 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+        organizationId:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        requestedRole:
+          $ref: "#/components/schemas/RoleName"
       required:
         - email
         - password
         - fullName
+        - organizationId
+        - teamId
+        - requestedRole
     ConfirmSignup:
       type: object
       properties:
@@ -120,14 +137,6 @@ components:
           type: string
           minLength: 1
           maxLength: 200
-    RoleName:
-      type: string
-      enum:
-        - ORG_ADMIN
-        - COACH
-        - ASSISTANT_COACH
-        - TEAM_MANAGER
-        - VIEWER
     AssignRole:
       type: object
       properties:
@@ -633,6 +642,21 @@ paths:
           description: Forbidden
         "404":
           description: Not found
+  /public/organizations:
+    get:
+      summary: List organizations (name-only, unauthenticated signup picker)
+      security: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
   /organizations/{orgId}/teams:
     post:
       summary: Create a team
@@ -720,6 +744,21 @@ paths:
           description: Forbidden
         "404":
           description: Not found
+  /public/organizations/{orgId}/teams:
+    get:
+      summary: List a team’s teams (name-only, unauthenticated signup picker)
+      security: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
   /users/{id}:
     get:
       summary: Get a user
@@ -795,6 +834,54 @@ paths:
   /roles/{roleId}:
     delete:
       summary: Remove a role
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /organizations/{orgId}/membership-requests:
+    get:
+      summary: List an organization’s membership requests
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /membership-requests/{id}/approve:
+    post:
+      summary: Approve a membership request (creates the UserRole)
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /membership-requests/{id}/reject:
+    post:
+      summary: Reject a membership request
       security:
         - cognitoJwt: []
       responses:

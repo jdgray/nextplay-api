@@ -13,11 +13,7 @@ export const handler = withHandler(async (event) => {
     throw new NotFoundError('Player');
   }
 
-  await assertHasRole(user.id, { organizationId: player.team.organizationId, teamId: player.teamId }, [
-    'ORG_ADMIN',
-    'COACH',
-    'TEAM_MANAGER',
-  ]);
+  await assertHasRole(user.id, { organizationId: player.team.organizationId, teamId: player.teamId }, ['ORG_ADMIN', 'TEAM_ADMIN']);
 
   await prisma.player.delete({ where: { id } });
   return noContent();

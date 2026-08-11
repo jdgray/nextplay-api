@@ -13,13 +13,7 @@ export const handler = withHandler(async (event) => {
     throw new NotFoundError('Team');
   }
 
-  await assertHasRole(user.id, { organizationId: team.organizationId, teamId }, [
-    'ORG_ADMIN',
-    'COACH',
-    'ASSISTANT_COACH',
-    'TEAM_MANAGER',
-    'VIEWER',
-  ]);
+  await assertHasRole(user.id, { organizationId: team.organizationId, teamId }, ['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT']);
 
   const games = await prisma.game.findMany({ where: { teamId }, orderBy: { gameDate: 'desc' } });
   return ok(games);

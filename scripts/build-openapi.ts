@@ -78,18 +78,28 @@ path('get', '/organizations', 'List organizations the caller has a role in');
 path('get', '/organizations/{id}', 'Get an organization');
 path('patch', '/organizations/{id}', 'Update an organization', { body: updateOrganizationSchema });
 path('delete', '/organizations/{id}', 'Delete an organization');
+path('get', '/public/organizations', 'List organizations (name-only, unauthenticated signup picker)', {
+  secure: false,
+});
 
 path('post', '/organizations/{orgId}/teams', 'Create a team', { body: createTeamSchema });
 path('get', '/organizations/{orgId}/teams', 'List an organization’s teams');
 path('get', '/teams/{id}', 'Get a team');
 path('patch', '/teams/{id}', 'Update a team', { body: updateTeamSchema });
 path('delete', '/teams/{id}', 'Delete a team');
+path('get', '/public/organizations/{orgId}/teams', 'List a team’s teams (name-only, unauthenticated signup picker)', {
+  secure: false,
+});
 
 path('get', '/users/{id}', 'Get a user');
 path('patch', '/users/{id}', 'Update a user', { body: updateUserSchema });
 path('get', '/users/{id}/roles', 'List a user’s roles');
 path('post', '/users/{id}/roles', 'Assign a role to a user', { body: assignRoleSchema });
 path('delete', '/roles/{roleId}', 'Remove a role');
+
+path('get', '/organizations/{orgId}/membership-requests', 'List an organization’s membership requests');
+path('post', '/membership-requests/{id}/approve', 'Approve a membership request (creates the UserRole)');
+path('post', '/membership-requests/{id}/reject', 'Reject a membership request');
 
 path('post', '/teams/{teamId}/players', 'Add a player to a team', { body: createPlayerSchema });
 path('get', '/teams/{teamId}/players', 'List a team’s players');

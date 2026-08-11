@@ -13,13 +13,7 @@ export const handler = withHandler(async (event) => {
     throw new NotFoundError('Game');
   }
 
-  await assertHasRole(user.id, { organizationId: game.team.organizationId, teamId: game.teamId }, [
-    'ORG_ADMIN',
-    'COACH',
-    'ASSISTANT_COACH',
-    'TEAM_MANAGER',
-    'VIEWER',
-  ]);
+  await assertHasRole(user.id, { organizationId: game.team.organizationId, teamId: game.teamId }, ['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT']);
 
   const events = await prisma.cornerKickEvent.findMany({ where: { gameId }, orderBy: { minute: 'asc' } });
   return ok(events);

@@ -13,13 +13,7 @@ export const handler = withHandler(async (event) => {
     throw new NotFoundError('Player');
   }
 
-  await assertHasRole(user.id, { organizationId: player.team.organizationId, teamId: player.teamId }, [
-    'ORG_ADMIN',
-    'COACH',
-    'ASSISTANT_COACH',
-    'TEAM_MANAGER',
-    'VIEWER',
-  ]);
+  await assertHasRole(user.id, { organizationId: player.team.organizationId, teamId: player.teamId }, ['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT']);
 
   const { team: _team, ...rest } = player;
   return ok(rest);

@@ -25,7 +25,7 @@ export const handler = withHandler(async (event) => {
   await assertHasRole(
     user.id,
     { organizationId: log.game.team.organizationId, teamId: log.game.teamId },
-    ['ORG_ADMIN', 'COACH', 'ASSISTANT_COACH', 'TEAM_MANAGER', 'VIEWER'],
+    ['ORG_ADMIN', 'TEAM_ADMIN', 'PARENT'],
   );
 
   const { game: _game, ...rest } = log;
