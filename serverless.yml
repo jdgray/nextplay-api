@@ -39,9 +39,13 @@ provider:
       cognitoAuthorizer:
         type: jwt
         identitySource: $request.header.Authorization
-        issuerUrl: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+        # Same issue as COGNITO_USER_POOL_ID above: !Sub/!Ref here pointed at
+        # this stack's own never-deployed Cognito resources, so tokens issued
+        # by the real pool were rejected with "JWT Token not from correct
+        # issuer url". Build the issuer/audience from the same env vars instead.
+        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
         audience:
-          - !Ref CognitoUserPoolClient
+          - ${env:COGNITO_USER_POOL_CLIENT_ID}
   # Deployed Lambdas that touch the DB must run inside the VPC that has a
   # route to the RDS Proxy/Aurora cluster (see terraform/ for that VPC and
   # the private subnets below). Pass --param:vpcId and --param:privateSubnetIds
@@ -249,6 +253,14 @@ functions:
           path: /public/organizations/{orgId}/teams
           method: get
   # --- Users / Roles ---
+  userListForOrg:
+    handler: src/handlers/users/list.handler
+    events:
+      - httpApi:
+          path: /organizations/{orgId}/users
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
   userGet:
     handler: src/handlers/users/get.handler
     events:

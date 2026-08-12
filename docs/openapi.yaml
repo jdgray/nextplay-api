@@ -759,6 +759,22 @@ paths:
           description: Forbidden
         "404":
           description: Not found
+  /organizations/{orgId}/users:
+    get:
+      summary: List an organization’s members and their roles
+      security:
+        - cognitoJwt: []
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
   /users/{id}:
     get:
       summary: Get a user

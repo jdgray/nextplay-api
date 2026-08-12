@@ -91,6 +91,7 @@ path('get', '/public/organizations/{orgId}/teams', 'List a team’s teams (name-
   secure: false,
 });
 
+path('get', '/organizations/{orgId}/users', 'List an organization’s members and their roles');
 path('get', '/users/{id}', 'Get a user');
 path('patch', '/users/{id}', 'Update a user', { body: updateUserSchema });
 path('get', '/users/{id}/roles', 'List a user’s roles');
